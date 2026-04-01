@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini Compiler - Local & Global Scope Support</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #f8f9fa;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #e9ecef;
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --accent-primary: #4263eb;
+            --accent-success: #51cf66;
+            --accent-warning: #ff922b;
+            --accent-danger: #ff6b6b;
+            --border-color: #dee2e6;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        body { font-family: 'Inter', sans-serif; background: var(--bg-primary); color: var(--text-primary); }
+        .header { background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); padding: 1.5rem 2rem; box-shadow: var(--shadow-sm); position: sticky; top: 0; z-index: 100; }
+        .header h1 { font-size: 1.75rem; font-weight: 700; background: linear-gradient(135deg, var(--accent-primary), #5f3dc4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.5rem; }
+        .header p { color: var(--text-secondary); font-size: 0.875rem; }
+        .subject-title { font-size: 1.1rem; color: var(--accent-primary); font-weight: 600; margin-top: 0.25rem; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .editor-section { background: var(--bg-secondary); border-radius: 12px; box-shadow: var(--shadow-md); margin-bottom: 2rem; overflow: hidden; }
+        .editor-header { background: var(--bg-tertiary); padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+        .file-input { display: flex; gap: 0.5rem; align-items: center; }
+        .file-input label { background: var(--bg-secondary); border: 1px solid var(--border-color); padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; font-size: 0.875rem; transition: all 0.2s; }
+        .file-input label:hover { background: var(--bg-tertiary); border-color: var(--accent-primary); }
+        .btn { padding: 0.5rem 1.5rem; border: none; border-radius: 8px; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s; font-family: inherit; }
+        .btn-primary { background: var(--accent-primary); color: white; }
+        .btn-primary:hover { background: #364fc7; transform: translateY(-1px); }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
+        textarea { width: 100%; padding: 1.5rem; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; border: none; resize: vertical; background: var(--bg-secondary); color: var(--text-primary); }
+        textarea:focus { outline: none; }
+        .stats-section { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .stat-card { background: var(--bg-secondary); padding: 1.25rem; border-radius: 12px; box-shadow: var(--shadow-sm); border: 1px solid var(--border-color); text-align: center; }
+        .stat-value { font-size: 2rem; font-weight: 700; color: var(--accent-primary); }
+        .stat-label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 0.5rem; }
+        .tabs { display: flex; gap: 0.5rem; border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; flex-wrap: wrap; position: sticky; top: 80px; background: var(--bg-primary); z-index: 90; padding: 0.5rem 0; }
+        .tab { padding: 0.75rem 1.5rem; cursor: pointer; border: none; background: none; font-size: 0.875rem; font-weight: 500; color: var(--text-secondary); transition: all 0.2s; position: relative; white-space: nowrap; }
+        .tab:hover { color: var(--accent-primary); }
+        .tab.active { color: var(--accent-primary); }
+        .tab.active::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--accent-primary); }
+        .tab-content { display: none; animation: fadeIn 0.3s; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .console-output { background: #1e1e1e; color: #d4d4d4; font-family: 'JetBrains Mono', monospace; font-size: 0.8125rem; padding: 1rem; border-radius: 8px; max-height: 500px; overflow-y: auto; }
+        .console-line { margin-bottom: 0.25rem; line-height: 1.5; font-family: 'JetBrains Mono', monospace; }
+        .console-info { color: #4dabf7; }
+        .console-success { color: #51cf66; }
+        .console-error { color: #ff6b6b; }
+        .console-header { color: #868e96; font-weight: bold; }
+        .token-line-console { display: flex; gap: 2rem; padding: 0.25rem 0; border-bottom: 1px solid #2d2d2d; flex-wrap: wrap; }
+        .token-type-console { color: #4dabf7; min-width: 120px; }
+        .token-value-console { color: #ff922b; min-width: 150px; }
+        .token-line-console-number { color: #868e96; }
+        .tree-container { background: var(--bg-secondary); border-radius: 8px; padding: 1.5rem; overflow-x: auto; overflow-y: auto; min-height: 650px; border: 1px solid var(--border-color); }
+        .tree-svg { display: block; margin: 0 auto; background: var(--bg-secondary); }
+        .code-block { background: #1e1e1e; color: #d4d4d4; font-family: 'JetBrains Mono', monospace; font-size: 0.8125rem; padding: 1rem; border-radius: 8px; overflow-x: auto; white-space: pre; max-height: 500px; overflow-y: auto; }
+        .code-line { margin-bottom: 0.25rem; line-height: 1.5; white-space: pre; }
+        .symbol-table { width: 100%; border-collapse: collapse; background: var(--bg-secondary); border-radius: 8px; display: table; }
+        .symbol-table th, .symbol-table td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border-color); }
+        .symbol-table th { background: var(--bg-tertiary); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; color: var(--text-secondary); position: sticky; top: 0; }
+        .symbol-table tr:hover { background: var(--bg-tertiary); }
+        .export-buttons { margin-top: 1rem; display: flex; gap: 1rem; justify-content: flex-end; }
+        .btn-export { background: var(--accent-success); color: white; padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.875rem; transition: all 0.2s; }
+        .btn-export:hover { transform: translateY(-1px); filter: brightness(1.05); }
+        .loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .loading-spinner { background: var(--bg-secondary); padding: 2rem; border-radius: 12px; text-align: center; }
+        .spinner { border: 3px solid var(--bg-tertiary); border-top-color: var(--accent-primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 1rem; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .language-info { background: #e3f2fd; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; color: #1e40af; }
+        .scope-badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+        .scope-global { background: #d4edda; color: #155724; }
+        .scope-local { background: #fff3cd; color: #856404; }
+        @media (max-width: 768px) { .container { padding: 1rem; } .stats-section { grid-template-columns: repeat(2, 1fr); } .tab { padding: 0.5rem 1rem; } .token-line-console { flex-direction: column; gap: 0.25rem; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>⚡ Symbol Table Formatter</h1>
+            <p class="subject-title">Automata Theory and Compiler Design</p>
+            
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="editor-section">
+            <div class="editor-header">
+                <div class="editor-title">📝 Source Code Editor</div>
+                <div class="file-input">
+                    <label for="file-upload">📁 Load File</label>
+                    <input type="file" id="file-upload" accept=".txt" style="display: none;">
+                    <button class="btn btn-primary" id="compile-btn">🔨 Compile</button>
+                    <button class="btn btn-secondary" id="reset-btn">🔄 Reset</button>
+                </div>
+            </div>
+            <textarea id="source-code" rows="12" placeholder="Enter your code here...&#10;&#10;Example with global and local variables:&#10;int global_x = 10;&#10;{&#10;    int local_y = 20;&#10;    global_x = global_x + local_y;&#10;}&#10;int result = global_x;"></textarea>
+        </div>
+
+        <div class="stats-section" id="stats-section"></div>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="console">📟 Console Output</button>
+            <button class="tab" data-tab="parse-tree">🌳 Parse Tree</button>
+            <button class="tab" data-tab="annotated-tree">📊 Annotated Tree</button>
+            <button class="tab" data-tab="tac-tree">🔧 TAC Tree</button>
+            <button class="tab" data-tab="tac">📝 Three-Address Code</button>
+            <button class="tab" data-tab="optimized">⚡ Optimized Code</button>
+            <button class="tab" data-tab="assembly">🖥️ Assembly Code</button>
+            <button class="tab" data-tab="symbols">📋 Symbol Table</button>
+        </div>
+
+        <div id="console" class="tab-content active">
+            <div class="console-output" id="console-output"></div>
+        </div>
+
+        <div id="parse-tree" class="tab-content">
+            <div class="language-info">🌳 Parse Tree showing program structure with blocks</div>
+            <div class="tree-container" id="parse-tree-container"></div>
+        </div>
+
+        <div id="annotated-tree" class="tab-content">
+            <div class="language-info">📊 Annotated Tree with type information</div>
+            <div class="tree-container" id="annotated-tree-container"></div>
+        </div>
+
+        <div id="tac-tree" class="tab-content">
+            <div class="language-info">🔧 TAC Expression Tree with Post-Order Traversal</div>
+            <div class="tree-container">
+                <div style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 8px;">
+                    <h3 style="margin-bottom: 0.5rem;">📐 Post-Order Traversal (for TAC)</h3>
+                    <div id="post-order-display" style="font-family: 'JetBrains Mono', monospace; font-size: 0.875rem;"></div>
+                </div>
+                <h3 style="margin-bottom: 1rem;">🌲 TAC Expression Tree</h3>
+                <div id="tac-tree-container"></div>
+            </div>
+        </div>
+
+        <div id="tac" class="tab-content">
+            <div class="code-block" id="tac-output"></div>
+        </div>
+
+        <div id="optimized" class="tab-content">
+            <div class="code-block" id="optimized-output"></div>
+        </div>
+
+        <div id="assembly" class="tab-content">
+            <div class="code-block" id="assembly-output"></div>
+        </div>
+
+        <div id="symbols" class="tab-content">
+            <div style="overflow-x: auto; max-height: 500px; overflow-y: auto;">
+                <table class="symbol-table" id="symbol-table">
+                    <thead>
+                        <tr><th>Name</th><th>Type</th><th>Value</th><th>Scope</th></tr>
+                    </thead>
+                    <tbody id="symbol-table-body"></tbody>
+                </table>
+            </div>
+            <div class="export-buttons">
+                <button class="btn-export" id="export-json-btn">📄 Export as JSON</button>
+                <button class="btn-export" id="export-csv-btn">📊 Export as CSV</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Compiling...</p>
+        </div>
+    </div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabId = tab.dataset.tab;
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+
+        document.getElementById('file-upload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    document.getElementById('source-code').value = event.target.result;
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            document.getElementById('source-code').value = '';
+        });
+
+        document.getElementById('export-json-btn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/export/json');
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'symbol_table.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                alert('Error exporting JSON: ' + error.message);
+            }
+        });
+
+        document.getElementById('export-csv-btn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/export/csv');
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'symbol_table.csv';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                alert('Error exporting CSV: ' + error.message);
+            }
+        });
+
+        document.getElementById('compile-btn').addEventListener('click', async () => {
+            const source = document.getElementById('source-code').value;
+            if (!source.trim()) {
+                alert('Please enter source code to compile');
+                return;
+            }
+
+            const overlay = document.getElementById('loading-overlay');
+            overlay.style.display = 'flex';
+
+            try {
+                const response = await fetch('/compile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source: source })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    displayResults(result);
+                } else {
+                    displayError(result.error);
+                }
+            } catch (error) {
+                displayError(error.message);
+            } finally {
+                overlay.style.display = 'none';
+            }
+        });
+
+        function displayResults(data) {
+            const stats = data.stats;
+            const statsHtml = `
+                <div class="stat-card"><div class="stat-value">${stats.lines}</div><div class="stat-label">Lines</div></div>
+                <div class="stat-card"><div class="stat-value">${stats.tokens}</div><div class="stat-label">Tokens</div></div>
+                <div class="stat-card"><div class="stat-value">${stats.symbols}</div><div class="stat-label">Symbols</div></div>
+                <div class="stat-card"><div class="stat-value">${stats.tac_count}</div><div class="stat-label">TAC</div></div>
+                <div class="stat-card"><div class="stat-value">${stats.optimized_count}</div><div class="stat-label">Optimized</div></div>
+                <div class="stat-card"><div class="stat-value">${stats.asm_count}</div><div class="stat-label">Assembly</div></div>
+            `;
+            document.getElementById('stats-section').innerHTML = statsHtml;
+
+            let consoleHtml = `<div class="console-line console-header">============================================================</div>`;
+            consoleHtml += `<div class="console-line console-header">COMPILATION COMPLETE</div>`;
+            consoleHtml += `<div class="console-line console-header">============================================================</div>`;
+            consoleHtml += `<div class="console-line console-info">Programming Language : ${data.language}</div>`;
+            consoleHtml += `<div class="console-line console-info">Lines processed : ${stats.lines}</div>`;
+            consoleHtml += `<div class="console-line console-info">Tokens produced : ${stats.tokens}</div>`;
+            consoleHtml += `<div class="console-line console-info">Symbols declared: ${stats.symbols}</div>`;
+            consoleHtml += `<div class="console-line console-info">TAC instructions: ${stats.tac_count}</div>`;
+            consoleHtml += `<div class="console-line console-info">Optimized lines : ${stats.optimized_count}</div>`;
+            consoleHtml += `<div class="console-line console-info">Assembly lines  : ${stats.asm_count}</div>`;
+            consoleHtml += `<div class="console-line console-header">============================================================</div>`;
+            consoleHtml += `<div class="console-line console-header">TOKENS:</div>`;
+            
+            data.tokens.forEach(t => {
+                consoleHtml += `<div class="token-line-console">
+                    <span class="token-type-console">${escapeHtml(t.type)}</span>
+                    <span class="token-value-console">${escapeHtml(t.value)}</span>
+                    <span class="token-line-console-number">Line ${t.line}</span>
+                </div>`;
+            });
+            
+            consoleHtml += `<div class="console-line console-header">============================================================</div>`;
+            consoleHtml += `<div class="console-line console-success">✓ Compilation completed successfully!</div>`;
+            
+            document.getElementById('console-output').innerHTML = consoleHtml;
+
+            drawImprovedTree(data.parse_tree, 'parse-tree-container');
+            drawImprovedTree(data.annotated_tree, 'annotated-tree-container');
+            drawImprovedTree(data.parse_tree, 'tac-tree-container');
+            
+           // Inside displayResults function, replace the post-order section with:
+if (data.full_post_order) {
+    document.getElementById('post-order-display').innerHTML = 
+        `<div class="code-line">Full AST Post-Order: ${data.full_post_order}</div>`;
+} else {
+    document.getElementById('post-order-display').innerHTML = '<div class="code-line">No traversal data</div>';
+}
+            document.getElementById('tac-output').innerHTML = data.tac.map((line, i) => 
+                `<div class="code-line">${(i+1).toString().padStart(3, ' ')}. ${escapeHtml(line)}</div>`
+            ).join('');
+
+            document.getElementById('optimized-output').innerHTML = data.optimized.map((line, i) => 
+                `<div class="code-line">${(i+1).toString().padStart(3, ' ')}. ${escapeHtml(line)}</div>`
+            ).join('');
+
+            document.getElementById('assembly-output').innerHTML = data.assembly.map((line, i) => 
+                `<div class="code-line">${(i+1).toString().padStart(3, ' ')}. ${escapeHtml(line)}</div>`
+            ).join('');
+
+            const symbolBody = document.getElementById('symbol-table-body');
+            symbolBody.innerHTML = data.symbols.map(s => {
+                const scopeClass = s.scope === 'global' ? 'scope-global' : 'scope-local';
+                return `<tr>
+                    <td><strong>${escapeHtml(s.name)}</strong></td>
+                    <td><span style="padding: 0.25rem 0.5rem; background: ${s.type === 'int' ? '#e3f2fd' : '#f3e5f5'}; border-radius: 4px;">${s.type}</span></td>
+                    <td>${escapeHtml(String(s.value))}</td>
+                    <td><span class="scope-badge ${scopeClass}">${escapeHtml(s.scope)}</span></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function drawImprovedTree(treeData, containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            
+            if (!treeData || !treeData.name) {
+                container.innerHTML = '<p style="text-align:center; color:#868e96; padding:2rem;">No tree data available</p>';
+                return;
+            }
+            
+            const margin = { top: 60, right: 80, bottom: 80, left: 80 };
+            let width = Math.max(900, container.clientWidth - 40);
+            let height = 700;
+            
+            const svg = d3.select(`#${containerId}`)
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .attr('class', 'tree-svg')
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            const root = d3.hierarchy(treeData);
+            
+            const treeLayout = d3.tree()
+                .size([height, width])
+                .separation((a, b) => (a.parent === b.parent ? 1.2 : 2.0));
+            
+            treeLayout(root);
+            
+            svg.selectAll('.link')
+                .data(root.links())
+                .enter()
+                .append('path')
+                .attr('class', 'link')
+                .attr('fill', 'none')
+                .attr('stroke', '#94a3b8')
+                .attr('stroke-width', 3)
+                .attr('stroke-linecap', 'round')
+                .attr('d', d3.linkVertical()
+                    .x(d => d.x)
+                    .y(d => d.y));
+            
+            const nodes = svg.selectAll('.node')
+                .data(root.descendants())
+                .enter()
+                .append('g')
+                .attr('class', 'node')
+                .attr('transform', d => `translate(${d.x},${d.y})`);
+            
+            nodes.append('circle')
+                .attr('r', 28)
+                .attr('fill', d => {
+                    if (d.data.name === '+' || d.data.name === '-' || d.data.name === '*' || d.data.name === '/') return '#f59e0b';
+                    if (d.data.name === 'Block') return '#10b981';
+                    if (d.data.name.includes('Dec') || d.data.name.includes('Ass')) return '#8b5cf6';
+                    return '#4263eb';
+                })
+                .attr('stroke', '#ffffff')
+                .attr('stroke-width', 3);
+            
+            nodes.append('text')
+                .attr('dy', '0.35em')
+                .attr('text-anchor', 'middle')
+                .style('fill', '#ffffff')
+                .style('font-size', '12px')
+                .style('font-weight', '600')
+                .style('font-family', 'JetBrains Mono, monospace')
+                .text(d => d.data.name.length > 12 ? d.data.name.substring(0,10)+'..' : d.data.name);
+            
+            nodes.append('text')
+                .attr('dy', '1.8em')
+                .attr('text-anchor', 'middle')
+                .style('fill', '#475569')
+                .style('font-size', '9.5px')
+                .style('font-family', 'JetBrains Mono, monospace')
+                .text(d => d.data.type && d.data.type !== '?' ? `:${d.data.type}` : '');
+            
+            const maxY = d3.max(root.descendants(), d => d.y) || 500;
+            const actualHeight = maxY + 120;
+            svg.attr('height', actualHeight + margin.top + margin.bottom);
+        }
+
+        function displayError(error) {
+            const consoleOutput = document.getElementById('console-output');
+            consoleOutput.innerHTML = `
+                <div class="console-line console-error">============================================================</div>
+                <div class="console-line console-error">COMPILATION ERROR</div>
+                <div class="console-line console-error">============================================================</div>
+                <div class="console-line console-error">${escapeHtml(error)}</div>
+            `;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        const exampleCode = `int global_counter = 0;
+int global_value = 100;
+
+{
+    int local_temp = 50;
+    float local_rate = 0.1;
+    global_counter = global_counter + 1;
+    local_temp = local_temp * 2;
+    global_value = global_value + local_temp;
+}
+
+{
+    int local_result = global_value * 2;
+    float local_final = local_result / 3.5;
+    global_counter = global_counter + local_result;
+}
+
+int final_result = global_counter + global_value;`;
+        document.getElementById('source-code').value = exampleCode;
+    </script>
+</body>
+</html>
